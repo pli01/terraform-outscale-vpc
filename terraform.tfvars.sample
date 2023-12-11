@@ -1,0 +1,11 @@
+# Path to yaml config file
+config_file = "config-sample.yml"
+# config_file = "config-sample/config-lb-multi-region.yml"
+
+# parameters map: variables like ${env} can be used in yaml config file or template cloud-init script
+parameters = {
+  "region_name"  = "eu-west-2"
+  "prefix_name"  = "dev"
+  "keypair_name" = "default-key"
+  "env"          = "demo"
+}

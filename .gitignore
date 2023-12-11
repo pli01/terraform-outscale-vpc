@@ -1,0 +1,6 @@
+.terraform*
+terraform.tfstate*
+terraform.tfvars*
+!terraform.tfvars.sample
+config.yml
+backend.tf

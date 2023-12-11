@@ -1,0 +1,188 @@
+#
+# sample config
+#   build 
+#     1 vpc with
+#     2 public subnet (admin, front)
+#     3 private subnet (admin, front, back)
+#     5 instances group in each subnet
+#     restricted inbound/outbound security rules enabled
+default:
+  region: ${region_name}
+  prefix_name: ${prefix_name}
+  keypair_name: ${keypair_name}
+  remove_default_outbound_rule: true
+  images:
+    debian: &debian
+      ami-0236ba54
+  vm_types:
+    server_type: &server_type
+      m3.medium
+  outbound_custom: &outbound_restricted
+    flow: Outbound
+    rules:
+      - from_port_range: 53
+        to_port_range: 53
+        ip_protocol: tcp
+        ip_ranges:
+          - 0.0.0.0/0
+      - from_port_range: 53
+        to_port_range: 53
+        ip_protocol: udp
+        ip_ranges:
+          - 0.0.0.0/0
+      - from_port_range: 123
+        to_port_range: 123
+        ip_protocol: udp
+        ip_ranges:
+          - 0.0.0.0/0
+      - from_port_range: 80
+        to_port_range: 80
+        ip_protocol: tcp
+        ip_ranges:
+          - 0.0.0.0/0
+      - from_port_range: 443
+        to_port_range: 443
+        ip_protocol: tcp
+        ip_ranges:
+          - 0.0.0.0/0
+
+resources:
+  #
+  # public_ip
+  #
+  public_ip:
+    nat01: {}
+    nat02: {}
+    bastion: {}
+  #
+  # net
+  #
+  net:
+    name: net01
+    ip_range: 172.16.0.0/16
+    tags:
+      # This tag is needed to enable security group on vm in same subnet
+      osc.fcu.enable_lan_security_groups: true
+  #
+  # internet_service
+  #
+  internet_service:
+    internet01:
+  #
+  # subnets
+  #   route and route_table
+  #   nat_service
+  #
+  subnets:
+    public-admin-a:
+      ip_range: 172.16.100.0/24
+      subregion_name: a
+      nat_service: nat01
+      route:
+        - destination_ip_range: 0.0.0.0/0
+          gateway_id: internet01
+    public-front-a:
+      ip_range: 172.16.0.0/24
+      subregion_name: a
+      nat_service: nat02
+      route:
+        - destination_ip_range: 0.0.0.0/0
+          gateway_id: internet01
+    private-admin-a:
+      ip_range: 172.16.101.0/24
+      subregion_name: a
+      route:
+        - destination_ip_range: 0.0.0.0/0
+          nat_service_id: nat01
+    private-front-a:
+      ip_range: 172.16.1.0/24
+      subregion_name: a
+      route:
+        - destination_ip_range: 0.0.0.0/0
+          nat_service_id: nat02
+    private-back-a:
+      ip_range: 172.16.2.0/24
+      subregion_name: a
+      route:
+        - destination_ip_range: 0.0.0.0/0
+          nat_service_id: nat02
+
+  security_groups:
+    out-restricted-to-all:
+      - *outbound_restricted
+    in-ssh-from-all:
+      - flow: Inbound
+        rules:
+          - from_port_range: "22"
+            to_port_range: "22"
+            ip_protocol: tcp
+            ip_ranges:
+              - 0.0.0.0/0
+    in-ssh-from-bastion:
+      - flow: Inbound
+        rules:
+          - from_port_range: "22"
+            to_port_range: "22"
+            ip_protocol: tcp
+            ip_ranges:
+              - 172.16.100.10/32
+    out-ssh-to-net:
+      - flow: Outbound
+        rules:
+          - from_port_range: "22"
+            to_port_range: "22"
+            ip_protocol: tcp
+            ip_ranges:
+              - 172.16.0.0/16
+  instances:
+    bastion:
+      count: 1
+      vm_type: *server_type
+      image_id: *debian
+      interfaces:
+        - subnet: public-admin-a
+          private_ip: 172.16.100.10
+          public_ip: bastion
+          security_groups:
+            - out-restricted-to-all
+            - in-ssh-from-all
+            - out-ssh-to-net
+    web-admin-a:
+      count: 2
+      vm_type: *server_type
+      image_id: *debian
+      tags:
+        # this tags to repulse instances on different hypervisor
+        osc.fcu.repulse_server_strict: web-admin-a
+      interfaces:
+        - subnet: private-admin-a
+          security_groups:
+            - in-ssh-from-bastion
+            - out-restricted-to-all
+    web-pub-a:
+      count: 1
+      vm_type: *server_type
+      image_id: *debian
+      interfaces:
+        - subnet: public-front-a
+          security_groups:
+            - in-ssh-from-bastion
+            - out-restricted-to-all
+    web-priv-a:
+      count: 1
+      vm_type: *server_type
+      image_id: *debian
+      interfaces:
+        - subnet: private-front-a
+          security_groups:
+            - in-ssh-from-bastion
+            - out-restricted-to-all
+    back-priv-a:
+      count: 0
+      vm_type: *server_type
+      image_id: *debian
+      interfaces:
+        - subnet: private-back-a
+          security_groups:
+            - in-ssh-from-bastion
+            - out-restricted-to-all

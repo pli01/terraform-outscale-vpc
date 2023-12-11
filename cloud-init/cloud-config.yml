@@ -1,0 +1,7 @@
+#cloud-config
+merge_how: dict(recurse_array)+list(append)+str()
+packages:
+ - jq
+runcmd:
+ - [ sh, -xc, "echo $(date) ': hello world!'" ]
+final_message: "The instance is up, after $UPTIME seconds"
