@@ -1,0 +1,49 @@
+#cloud-config
+merge_how: dict(recurse_array)+list(append)+str()
+package_update: true
+#package_upgrade: true
+
+groups:
+  - docker
+system_info:
+  default_user:
+    groups: [ docker ]
+
+write_files:
+  - path: /etc/docker/daemon.json
+    owner: root:root
+    permissions: '0644'
+    content: |
+      {
+       "log-driver": "journald",
+       "mtu": 1450
+      }
+
+packages:
+  - apt-transport-https
+  - ca-certificates
+  - curl
+  - gnupg
+  - software-properties-common
+  - sudo
+  - jq
+runcmd:
+  # Install Docker
+  - |
+    curl -fsSL https://download.docker.com/linux/debian/gpg | sudo gpg --dearmor -o /etc/apt/trusted.gpg.d/docker.gpg
+    chmod a+r /etc/apt/trusted.gpg.d/docker.gpg
+  - |
+    echo "deb [arch=$(dpkg --print-architecture) signed-by=/etc/apt/trusted.gpg.d/docker.gpg] \
+       https://download.docker.com/linux/debian $(lsb_release -cs) stable" | \
+    tee /etc/apt/sources.list.d/docker-ce.list > /dev/null
+  - |
+    export DEBIAN_FRONTEND=noninteractive
+    apt-get update -qy
+    apt-get install -qy docker-ce docker-ce-cli containerd.io
+  - systemctl start docker
+  - systemctl enable docker
+  # Install docker-compose
+  - |
+    curl -fsSL https://github.com/docker/compose/releases/download/v2.23.3/docker-compose-linux-x86_64 -o /usr/local/bin/docker-compose && \
+    chmod +x /usr/local/bin/docker-compose
+final_message: "The instance is up, after $UPTIME seconds"

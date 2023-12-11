@@ -1,0 +1,13 @@
+terraform {
+  backend "s3" {
+    bucket   = "__REPLACE_BUCKET_NAME__"
+    key      = "__REPLACE_TFSTATE_FILE__"
+    region   = "__REPLACE_OUTSCALE_REGION__"
+    endpoint = "oos.__REPLACE_OUTSCALE_REGION__.outscale.com"
+
+    force_path_style            = true
+    skip_region_validation      = true
+    skip_credentials_validation = true
+    max_retries                 = 15
+  }
+}

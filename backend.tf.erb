@@ -1,0 +1,14 @@
+terraform {
+  backend "s3" {
+    bucket   = "<%= ENV['S3_BACKEND_TFSTATE_BUCKET'] %>"
+    key      = "<%= ENV['S3_BACKEND_TFSTATE_FILE'] %>"
+    region   = "<%= ENV['AWS_DEFAULT_REGION'] %>"
+    endpoint = "<%= ENV['AWS_S3_ENDPOINT'] %>"
+
+    force_path_style            = true
+    skip_region_validation      = true
+    skip_credentials_validation = true
+    max_retries                 = 15
+  }
+}
+

@@ -1,0 +1,58 @@
+#
+# sample config
+#   build 
+#     1 vpc with
+#     2 public subnet (admin, front)
+#     3 private subnet (admin, front, back)
+#
+default:
+  region: ${region_name}
+  prefix_name: ${prefix_name}
+  keypair_name: ${keypair_name}
+  remove_default_outbound_rule: true
+
+resources:
+  public_ip:
+    nat01: {}
+    nat02: {}
+  net:
+    name: net01
+    ip_range: 172.16.0.0/16
+    tags:
+      # This tag is needed to enable security group on vm in same subnet
+      osc.fcu.enable_lan_security_groups: true
+  internet_service:
+    internet01:
+  subnets:
+    public-admin-a:
+      ip_range: 172.16.100.0/24
+      subregion_name: a
+      nat_service: nat01
+      route:
+        - destination_ip_range: 0.0.0.0/0
+          gateway_id: internet01
+    private-admin-a:
+      ip_range: 172.16.101.0/24
+      subregion_name: a
+      route:
+        - destination_ip_range: 0.0.0.0/0
+          nat_service_id: nat01
+    public-front-a:
+      ip_range: 172.16.0.0/24
+      subregion_name: a
+      nat_service: nat02
+      route:
+        - destination_ip_range: 0.0.0.0/0
+          gateway_id: internet01
+    private-front-a:
+      ip_range: 172.16.1.0/24
+      subregion_name: a
+      route:
+        - destination_ip_range: 0.0.0.0/0
+          nat_service_id: nat02
+    private-back-a:
+      ip_range: 172.16.2.0/24
+      subregion_name: a
+      route:
+        - destination_ip_range: 0.0.0.0/0
+          nat_service_id: nat02

@@ -1,0 +1,239 @@
+#
+# sample config
+#    1 lb
+#    2 servergroup web instances in each different subregion (1a, 1b)
+#    To test: use curl with lb url
+#
+default:
+  region: ${region_name}
+  prefix_name: ${prefix_name}
+  keypair_name: ${keypair_name}
+  remove_default_outbound_rule: true
+  images:
+    debian: &debian
+      ami-0236ba54
+  vm_types:
+    server_type: &server_type
+      m3.medium
+  cloud_init:
+    cloudinit_web_1: &cloudinit_web
+      - filename: cloud-init.yml
+        content_type: text/cloud-config
+        file: cloud-init/cloud-config.yml
+      - filename: config-script-web.sh
+        content_type: text/x-shellscript
+        file: cloud-init/config-script-web.sh # install lighttpd and target index.html
+
+resources:
+  #
+  # public_ip
+  #
+  public_ip:
+    nat01: {}
+    nat02: {}
+    lb01: {}
+    bastion: {}
+  #
+  # net
+  #
+  net:
+    name: net01
+    ip_range: 172.16.0.0/16
+    tags:
+      # This tag is needed to enable security group on vm in same subnet
+      osc.fcu.enable_lan_security_groups: true
+  #
+  # internet_service
+  #
+  internet_service:
+    internet01:
+  #
+  # subnets
+  #   route and route_table
+  #   nat_service
+  #
+  subnets:
+    public-front-a:
+      ip_range: 172.16.0.0/24
+      subregion_name: a
+      nat_service: nat01
+      route:
+        - destination_ip_range: 0.0.0.0/0
+          gateway_id: internet01
+    public-front-b:
+      ip_range: 172.16.10.0/24
+      subregion_name: b
+      nat_service: nat02
+      route:
+         - destination_ip_range: 0.0.0.0/0
+           gateway_id: internet01
+    private-front-a:
+      ip_range: 172.16.1.0/24
+      subregion_name: a
+      route:
+        - destination_ip_range: 0.0.0.0/0
+          nat_service_id: nat01
+    private-front-b:
+      ip_range: 172.16.100.0/24
+      subregion_name: b
+      route:
+        - destination_ip_range: 0.0.0.0/0
+          nat_service_id: nat02
+  security_groups:
+    out-restricted-to-all:
+      - flow: Outbound
+        rules:
+          - from_port_range: 53
+            to_port_range: 53
+            ip_protocol: tcp
+            ip_ranges:
+              - 0.0.0.0/0
+          - from_port_range: 53
+            to_port_range: 53
+            ip_protocol: udp
+            ip_ranges:
+              - 0.0.0.0/0
+          - from_port_range: 123
+            to_port_range: 123
+            ip_protocol: udp
+            ip_ranges:
+              - 0.0.0.0/0
+          - from_port_range: 80
+            to_port_range: 80
+            ip_protocol: tcp
+            ip_ranges:
+              - 0.0.0.0/0
+          - from_port_range: 443
+            to_port_range: 443
+            ip_protocol: tcp
+            ip_ranges:
+              - 0.0.0.0/0
+    in-ssh-from-all:
+      - flow: Inbound
+        rules:
+          - from_port_range: "22"
+            to_port_range: "22"
+            ip_protocol: tcp
+            ip_ranges:
+              - 0.0.0.0/0
+    in-ssh-from-bastion:
+      - flow: Inbound
+        rules:
+          - from_port_range: "22"
+            to_port_range: "22"
+            ip_protocol: tcp
+            #            ip_ranges:
+            #  - 172.16.0.100/32
+            vm_ranges:
+              - bastion
+    out-ssh-to-net:
+      - flow: Outbound
+        rules:
+          - from_port_range: "22"
+            to_port_range: "22"
+            ip_protocol: tcp
+            subnet_ranges:
+              - public-front-a
+              - public-front-b
+              - private-front-a
+              - private-front-b
+#            ip_ranges:
+#              - 172.16.0.0/16
+    in-web-from-all:
+      - flow: Inbound
+        rules:
+        - from_port_range: "443"
+          to_port_range: "443"
+          ip_protocol: tcp
+          ip_ranges:
+            - 0.0.0.0/0
+      - flow: Inbound
+        rules:
+        - from_port_range: "80"
+          to_port_range: "80"
+          ip_protocol: tcp
+          ip_ranges:
+            - 0.0.0.0/0
+
+  load_balancers:
+    lb01:
+      load_balancer_type: internet-facing  # internal
+      public_ip: lb01
+      subnets:
+        - public-front-a
+      security_groups:
+        - out-restricted-to-all
+        - in-web-from-all
+      listeners:
+        - load_balancer_port: 80
+          load_balancer_protocol: HTTP
+          backend_port: 80
+          backend_protocol: HTTP
+          # server_certificate_id: ORN
+#      access_log:
+#        is_enabled: false # true # false
+#        publication_interval: 5
+#        osu_bucket_name: lb-logs
+#        osu_bucket_prefix: access-logs-lb01
+      health_check:
+        - path: "/"
+          port: 80
+          protocol: HTTP
+          check_interval: 30
+          healthy_threshold: 10
+          timeout: 20
+          unhealthy_threshold: 8
+
+      backend_vms:
+        - web-a
+        - web-b
+  #
+  # instances
+  #   volumes list (root and multiple data volumes)
+  #   interfaces list with fixed or dynamic ip
+  #
+  instances:
+    bastion:
+      count: 1
+      vm_type: *server_type
+      image_id: *debian
+      interfaces:
+        - subnet: public-front-a
+          private_ip: 172.16.0.100
+          public_ip: bastion
+          security_groups:
+            - out-restricted-to-all
+            - in-ssh-from-all
+            - out-ssh-to-net
+    web-a:
+      count: 2
+      vm_type: *server_type
+      image_id: *debian
+      tags:
+        # this tags to repulse instances on different hypervisor
+        osc.fcu.repulse_server_strict: web-a
+      interfaces:
+        - subnet: private-front-a
+          security_groups:
+            - out-restricted-to-all
+            - in-ssh-from-bastion
+            - in-web-from-all
+      enable_user_data: true
+      cloudinit_multipart:
+        *cloudinit_web
+    web-b:
+      count: 2
+      vm_type: *server_type
+      image_id: *debian
+      tags:
+        # this tags to repulse instances on different hypervisor
+        osc.fcu.repulse_server_strict: web-b
+      interfaces:
+        - subnet: private-front-b
+          security_groups:
+            - out-restricted-to-all
+            - in-ssh-from-bastion
+            - in-web-from-all
+      enable_user_data: true
+      cloudinit_multipart:
+        *cloudinit_web

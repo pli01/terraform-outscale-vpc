@@ -1,0 +1,84 @@
+#
+# sample config
+#   vpc/subnet with a single server with public_ip
+#
+default:
+  region: ${region_name}
+  prefix_name: ${prefix_name}
+  keypair_name: ${keypair_name}
+  images:
+    debian: &debian
+      ami-d9937936
+  vm_types:
+    server_type: &server_type
+      tinav4.c2r4p1 # m3.medium
+
+  cloud_init:
+    cloudinit_ansible_pull: &cloudinit_ansible_pull
+      - filename: 00-config-script-generate-config.sh
+        content_type: text/x-shellscript
+        templatefile: cloud-init/config-script-generate-config.sh.tftpl
+        vars:
+          CONFIG:
+            ansible_pull_url: https://github.com/pli01/ansible-pull-demo
+            #ansible_pull_args: "--purge -C main"
+            WEB_SERVER_ENABLE: true
+
+      - filename: 01-config-script-ansible.sh
+        content_type: text/x-shellscript
+        file: cloud-init/config-script-ansible.sh
+
+resources:
+  public_ip:
+    web: {}
+  net:
+    name: net01
+    ip_range: 172.16.0.0/16
+  internet_service:
+    internet01:
+  subnets:
+    public-front-a:
+      ip_range: 172.16.0.0/24
+      subregion_name: a
+      route:
+        - destination_ip_range: 0.0.0.0/0
+          gateway_id: internet01
+  security_groups:
+    in-ssh-from-all:
+      - flow: Inbound
+        rules:
+          - from_port_range: "22"
+            to_port_range: "22"
+            ip_protocol: tcp
+            ip_ranges:
+              - 0.0.0.0/0
+    in-web-from-all:
+      - flow: Inbound
+        rules:
+        - from_port_range: "443"
+          to_port_range: "443"
+          ip_protocol: tcp
+          ip_ranges:
+            - 0.0.0.0/0
+      - flow: Inbound
+        rules:
+        - from_port_range: "80"
+          to_port_range: "80"
+          ip_protocol: tcp
+          ip_ranges:
+            - 0.0.0.0/0
+  instances:
+    web:
+      count: 1
+      vm_type: *server_type
+      image_id: *debian
+      interfaces:
+        - subnet: public-front-a
+          public_ip: web    # only one public_ip associate with one instance
+          security_groups:
+            - in-ssh-from-all
+            - in-web-from-all
+      enable_user_data: true
+      cloudinit_multipart: # install docker and docker-compose
+        *cloudinit_ansible_pull
+

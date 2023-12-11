@@ -1,0 +1,97 @@
+#cloud-config
+#
+#  smart docker-compose stack deployement
+#     support multiple docker-compose.XXX.yml files
+#     support multiple files
+#     generate .env file
+#     use unit systemd per docker-compose file
+#
+#  credits: https://github.com/christippett/terraform-cloudinit-container-server
+#
+#
+merge_how: dict(recurse_array)+list(append)+str()
+
+write_files:
+  - path: /var/app/.env
+    content: ${ base64encode(join("\n", [for k, v  in env_keys : "${k}=${v}" if v != null])) }
+    permissions: 0644
+    encoding: b64
+  %{~ for f in files ~}
+  - path: /var/app/${f.filename}
+    permissions: %{ if substr(f.filename, -2, 2) == "sh"}0755%{else}0644%{endif}
+    content: ${ filebase64(format("%s", f.path)) }
+    encoding: b64
+  %{~ endfor ~}
+  %{~ for c in docker_compose_files ~}
+  - path: /etc/systemd/system/${coalesce(c.name, "app")}.service
+    permissions: 0644
+    content: |
+      [Unit]
+      Description=Docker Compose Service (${coalesce(c.name, "app")})
+      Requires=docker.service ${join(" ", [ for f in docker_compose_files : "${f.name}.service" if f.name != null && c.name == null ])}
+      After=docker.service
+
+      [Service]
+      Type=oneshot
+      RemainAfterExit=yes
+      WorkingDirectory=/var/app
+      EnvironmentFile=/var/app/.env
+      ExecStartPre=-/usr/local/bin/docker-compose \
+        --env-file /var/app/.env --project-directory /var/app/ --parallel 3 \
+        -f ${c.filename} rm
+      ExecStart=/usr/local/bin/docker-compose \
+        --env-file /var/app/.env --project-directory /var/app/ --parallel 3 \
+        -f ${c.filename} up -d
+      ExecStop=/usr/local/bin/docker-compose \
+        --env-file /var/app/.env --project-directory /var/app/ --parallel 3 \
+        -f ${c.filename} stop -t 15
+      ExecReload=/usr/local/bin/docker-compose \
+        --env-file /var/app/.env --project-directory /var/app/ --parallel 3 \
+        -f ${c.filename} pull --ignore-pull-failures
+      ExecReload=/usr/local/bin/docker-compose \
+        --env-file /var/app/.env --project-directory /var/app/ --parallel 3 \
+        -f ${c.filename} stop -t 15
+
+      [Install]
+      WantedBy=multi-user.target
+
+  - path: /etc/systemd/system/${coalesce(c.name, "app")}-monitor.service
+    permissions: 0644
+    content: |
+      [Unit]
+      Description=Restart application (${coalesce(c.name, "app")})
+
+      [Service]
+      Type=oneshot
+      WorkingDirectory=/var/app
+      EnvironmentFile=/var/app/.env
+      ExecStartPre=-/usr/local/bin/docker-compose \
+        --env-file /var/app/.env --project-directory /var/app/ --parallel 3 \
+        -f ${c.filename} pull --ignore-pull-failures
+      ExecStart=/usr/bin/systemctl restart ${coalesce(c.name, "app")}.service
+
+      [Install]
+      WantedBy=multi-user.target
+
+  - path: /etc/systemd/system/${coalesce(c.name, "app")}-monitor.path
+    permissions: 0644
+    content: |
+      [Unit]
+      Description=Watch for updates to .env
+      After=${coalesce(c.name, "app")}.service
+
+      [Path]
+      PathChanged=/var/app/.env
+
+      [Install]
+      WantedBy=multi-user.target
+  %{~ endfor ~}
+
+runcmd:
+#  # Create network used by Traefik to identify running containers
+#  - "[ $(docker network list -q --filter=name=web) ] || docker network create web"
+  # Enable systemd services responsible for managing Docker Compose services
+  - systemctl daemon-reload
+  %{~ for c in docker_compose_files ~}
+  - systemctl enable --now ${coalesce(c.name, "app")} ${coalesce(c.name, "app")}-monitor.path
+  %{~ endfor ~}

@@ -1,0 +1,28 @@
+config_file = "config-sample/config-kube-cluster.yml"
+
+parameters = {
+  region_name  = "cloudgouv-eu-west-1"
+  prefix_name  = "dev"
+  keypair_name = "default-outscale"
+  IP_ALLOW = "0.0.0.0/0"
+  #
+  bastion_count            = 1
+  k3s_masters_init_count = 1
+  k3s_masters_add_count = 2
+  k3s_workers_count = 1
+  #
+  K3S_TOKEN = "__REPLACE_THIS__"
+  DOCKER_LOGIN = ""
+  DOCKER_TOKEN = ""
+  PORTAINER_ADMIN_PASSWORD = "__REPLACE_THIS_WITH_BCRYPT_HASH__"
+
+  # heredoc multiline string use <<EOF
+  #  ssh_authorized_keys         = <<EOF
+  #    [
+  #    "ssh-rsa AAAAB3NXXXXXXX== user1@host1",
+  #    "ssh-ed25519 AAAAC3YYYYYYYY  user2@host2"
+  #    ]
+  #  EOF
+
+}
+

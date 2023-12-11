@@ -1,0 +1,8 @@
+config_file = "../config-sample/config-simple-instance-docker-compose-whoami.yml"
+
+parameters = {
+  "region_name"                 = "cloudgouv-eu-west-1"
+  "prefix_name"                 = "dev"
+  "keypair_name"                = "default-outscale"
+}
+

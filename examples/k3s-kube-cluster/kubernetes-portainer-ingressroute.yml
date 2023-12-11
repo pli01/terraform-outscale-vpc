@@ -1,0 +1,46 @@
+### wildcard host
+apiVersion: traefik.containo.us/v1alpha1
+kind: IngressRoute
+metadata:
+  name: portainer-ingress
+  namespace: portainer
+spec:
+  entryPoints:
+    - websecure
+  routes:
+  - kind: Rule
+    match: HostRegexp(`{any:.+}`) #  Host(`portainer`)
+    services:
+      - name: portainer
+        port: 9443
+##
+### Replace path with regex
+### ingress to redirect http://K3S/portainer -> portainer service
+#apiVersion: traefik.containo.us/v1alpha1
+#kind: Middleware
+#metadata:
+#  name: portainer-replacepathregex
+#  namespace: portainer
+#spec:
+#  replacePathRegex:
+#    regex: ^/portainer/(.*)
+#    replacement: /$1
+#
+#---
+#
+#apiVersion: traefik.containo.us/v1alpha1
+#kind: IngressRoute
+#metadata:
+#  name: portainer-ingress
+#  namespace: portainer
+#spec:
+#  entryPoints:
+#    - websecure
+#  routes:
+#  - kind: Rule
+#    match: HostRegexp(`{any:.+}`) && PathPrefix(`/portainer`)
+#    services:
+#      - name: portainer
+#        port: 9443
+#    middlewares:
+#     - name: portainer-replacepathregex

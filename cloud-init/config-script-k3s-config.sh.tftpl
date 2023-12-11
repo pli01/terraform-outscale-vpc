@@ -1,0 +1,23 @@
+#!/bin/bash
+#
+# this is a terraform template
+#
+
+set -e -o pipefail
+
+cat <<'EOF'> /home/outscale/config.cfg
+%{ for k,v in K3S_CONF ~}
+%{ if k == "K3S_SERVER_IP_LIST" ~}
+export K3S_URL=${ join(",",formatlist("https://%s:6443",v) )}
+%{ else ~}
+%{ if v != "" ~}
+export ${k}='${v}'
+%{ else ~}
+export ${k}=""
+%{ endif ~}
+%{ endif ~}
+%{ endfor ~}
+#
+EOF
+
+chmod 600 /home/outscale/config.cfg

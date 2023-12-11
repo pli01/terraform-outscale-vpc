@@ -1,0 +1,120 @@
+#
+# sample config
+#   vpc/subnet with a single web server with public_ip
+#
+default:
+  region: ${region_name}
+  prefix_name: ${prefix_name}
+  keypair_name: ${keypair_name}
+  remove_default_outbound_rule: true
+  images:
+    debian: &debian
+      ami-d9937936 # ami-0236ba54
+  vm_types:
+    server_type: &server_type
+      m3.large # m3.medium
+  ip_whitelist_allow:
+    ip_allow: &ip_allow
+      0.0.0.0/0
+
+  cloud_init:
+    cloudinit_docker: &cloudinit_docker
+      - filename: cloud-init.yml
+        content_type: text/cloud-config
+        file: cloud-init/cloud-config-docker.yml                      # install docker and docker-compose binary
+
+      - filename: cloud-init-compose.yml
+        content_type: text/cloud-config
+        templatefile: cloud-init/cloud-config-docker-compose.yml.tftpl  # generic multiple docker-compose stacks installation
+        vars:
+          files:                                                      # list all files to write
+            - filename: docker-compose.whoami.yml
+              path: assets/docker-compose.whoami.yml
+
+          docker_compose_files:                                       # describe all docker-compose files to start
+            - name: whoami
+              filename: docker-compose.whoami.yml
+
+resources:
+  public_ip:
+    web: {}
+  net:
+    name: net01
+    ip_range: 172.16.0.0/16
+  internet_service:
+    internet01:
+  subnets:
+    public-front-a:
+      ip_range: 172.16.0.0/24
+      subregion_name: a
+      route:
+        - destination_ip_range: 0.0.0.0/0
+          gateway_id: internet01
+  security_groups:
+    out-restricted-to-all:
+      - flow: Outbound
+        rules:
+          - from_port_range: 53
+            to_port_range: 53
+            ip_protocol: tcp
+            ip_ranges:
+              - 0.0.0.0/0
+          - from_port_range: 53
+            to_port_range: 53
+            ip_protocol: udp
+            ip_ranges:
+              - 0.0.0.0/0
+          - from_port_range: 123
+            to_port_range: 123
+            ip_protocol: udp
+            ip_ranges:
+              - 0.0.0.0/0
+          - from_port_range: 80
+            to_port_range: 80
+            ip_protocol: tcp
+            ip_ranges:
+              - 0.0.0.0/0
+          - from_port_range: 443
+            to_port_range: 443
+            ip_protocol: tcp
+            ip_ranges:
+              - 0.0.0.0/0
+    in-ssh-from-all:
+      - flow: Inbound
+        rules:
+          - from_port_range: "22"
+            to_port_range: "22"
+            ip_protocol: tcp
+            ip_ranges:
+              - *ip_allow
+    in-web-from-all:
+      - flow: Inbound
+        rules:
+        - from_port_range: "443"
+          to_port_range: "443"
+          ip_protocol: tcp
+          ip_ranges:
+            - 0.0.0.0/0
+      - flow: Inbound
+        rules:
+        - from_port_range: "80"
+          to_port_range: "80"
+          ip_protocol: tcp
+          ip_ranges:
+            - 0.0.0.0/0
+  instances:
+    web:
+      count: 1
+      vm_type: *server_type
+      image_id: *debian
+      #state: stopped
+      interfaces:
+        - subnet: public-front-a
+          public_ip: web    # only one public_ip associate with one instance
+          security_groups:
+            - out-restricted-to-all
+            - in-ssh-from-all
+            - in-web-from-all
+      enable_user_data: true
+      cloudinit_multipart: # install docker and docker-compose
+        *cloudinit_docker

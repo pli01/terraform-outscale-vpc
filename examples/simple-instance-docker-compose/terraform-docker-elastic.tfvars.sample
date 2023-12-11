@@ -1,0 +1,17 @@
+config_file = "config-sample/config-simple-instance-docker-compose-elastic.yml"
+
+parameters = {
+  "region_name"                 = "cloudgouv-eu-west-1"
+  "prefix_name"                 = "dev"
+  "keypair_name"                = "default-outscale"
+  ELASTIC_VERSION               = "7.17.16"
+  CA_PASSWORD                   = "_REPLACE_THIS_"
+  ELASTICSEARCH01_CERT_PASSWORD = "_REPLACE_THIS_"
+  ELASTICSEARCH02_CERT_PASSWORD = "_REPLACE_THIS_"
+  ELASTICSEARCH03_CERT_PASSWORD = "_REPLACE_THIS_"
+  KIBANA_CERT_PASSWORD          = "_REPLACE_THIS_"
+  ELASTIC_PASSWORD              = "_REPLACE_THIS_"
+  KIBANA_PASSWORD               = "_REPLACE_THIS_"
+  IP_ALLOW                      = "0.0.0.0/0" # replace with restricted IP (x.x.x.x)
+}
+

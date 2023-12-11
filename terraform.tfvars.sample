@@ -1,0 +1,28 @@
+# Path to yaml config file
+config_file = "config-sample.yml"
+# config_file = "config-sample/config-lb-multi-region.yml"
+
+# parameters map:
+#   Variables like ${env} can be used in yaml config file or template file or cloud-init file
+#
+#   keys are string
+#   value are "strings"
+#   To define others types value (ex: list or map) use heredoc multiline string syntax
+#      See example with ssh_authorized_keys key which is a list represented as a string
+#
+parameters = {
+  region_name  = "eu-west-2"
+  prefix_name  = "dev"
+  keypair_name = "default-key"
+  env          = "demo"
+  # example
+  #
+  #  ELASTIC_VERSION = "7.17.16"
+  #
+  #  ssh_authorized_keys  = <<EOF
+  #    [
+  #    "ssh-rsa AAAAB3XXXXXXXXXXXX== user1@host",
+  #    "ssh-ed25519 AAAAC3YYYYYYYYYY user2@host"
+  #    ]
+  #  EOF
+}

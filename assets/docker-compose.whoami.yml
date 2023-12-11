@@ -1,0 +1,7 @@
+version: "3.5"
+services:
+  whoami:
+    image: containous/whoami
+    restart: always
+    ports:
+      - "80:80"

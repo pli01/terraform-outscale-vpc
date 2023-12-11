@@ -1,0 +1,241 @@
+#
+# sample config
+#
+default:
+  region: eu-west-2              # define region name
+  prefix_name: dev               # define prefix use to tag resources
+  # prefix_name: ${prefix_name}  # define extra vars in parameters map: { "prefix_name" = "test"}
+  keypair_name: default-key      # define default keypair name
+  #
+  # extra_custom_parameters: ${my_var}  # define extra vars in parameters map: {my_var=test}
+  #
+  # simple yaml anchor supported
+  #    define anchor and reuse it in the yaml file
+  #
+  ip_ranges_cidr:
+    somehosts: &somehosts
+      - 172.16.1.200/32
+      - 172.16.1.201/32
+      - 172.16.1.202/32
+  images:
+    debian: &debian             # define a debian yaml anchor and reuse it the instances section
+      ami-0236ba54
+
+  vm_type_list:
+    server_type: &server_type
+      t2.micro
+
+  cloud_init:
+    cloudinit_web: &cloudinit_web              # define a cloud_init anchor for web instances
+      - filename: cloud-init.yml
+        content_type: text/cloud-config
+        file: cloud-init/cloud-config.yml      # file is located in ./
+      - filename: config-script.sh
+        content_type: text/x-shellscript
+        file: cloud-init/config-script-web.sh  # file is located in ./
+      - filename: config-script-demo.sh
+        content_type: text/x-shellscript
+        templatefile: cloud-init/config-script-demo.sh.tpl # templatefile is located in ./
+
+    cloudinit_sample: &cloudinit_sample
+      - filename: cloud-init.yml
+        content_type: text/cloud-config
+        cloud-config:                                      # sample cloud-config
+          merge_how: dict(recurse_array)+list(append)
+          packages:
+            - jq
+          runcmd:
+            - [ sh, -xc, "echo $(date) ': hello world!'" ]
+          final_message: "The instance is up, after $UPTIME seconds"
+
+    cloudinit_web_script: &cloudinit_web_script
+      - filename: config-script-web.sh
+        content_type: text/x-shellscript
+        content: |                                        # sample shell script
+          #!/bin/bash
+          apt-get update -qy
+          apt-get install -qy lighttpd
+          echo "Hello World! I'm starting up now" > $HOME/out
+
+#
+# define resources to create
+#
+resources:
+  #
+  # public_ip
+  #
+  public_ip:                     # define public ip reservation/allocation
+    nat01: {}                    #  allocate public ip for nat service
+    web: {}
+    bastion: {}
+  #  bastion:                    # optional: declare a pre reserved public ip for bastion
+  #    public_ip: XXX.XX.XX.XXX  #  define here the public_ip allocated outside this terraform module
+  #
+  # net
+  #
+  net:
+    name: net01
+    ip_range: 172.16.0.0/16     # define ip_range for the vpc
+    tags:
+      # This tag is needed to enable security group on vm in same subnet
+      osc.fcu.enable_lan_security_groups: true
+  #
+  # internet_service
+  #
+  internet_service:
+    internet01:                 # define on internet_service in one region
+  # internet02:                 # define on internet_service in another region
+  #
+  # subnets
+  #   route and route_table
+  #   nat_service
+  #
+  subnets:
+    public-front-a:               # subnet name
+      ip_range: 172.16.0.0/24     # define ip_range subnet in vpc net range
+      subregion_name: a           # subregion_name: last letter of sub region (a,b,..)
+      nat_service: nat01          # create one nat_service for private instances, without public_ip in one region 
+      route:                      # define route lists
+        - destination_ip_range: 0.0.0.0/0
+          gateway_id: internet01  # default gw for public-front-a in region a (use internet02, on another region)
+    private-front-a:
+      ip_range: 172.16.1.0/24
+      subregion_name: a
+      route:
+        - destination_ip_range: 0.0.0.0/0
+          nat_service_id: nat01  # default gw for private instance without public_ip
+    private-back-a:
+      ip_range: 172.16.2.0/24
+      subregion_name: a
+      route:
+        - destination_ip_range: 0.0.0.0/0
+          nat_service_id: nat01
+  #        nic_id: fw-0-0           # optional: define vm nic_id if vm act as a gateway instead of nat_service_id
+  #
+  # security group and rules
+  #
+  # security_groups: {}         # empty security groups map
+  #
+  security_groups:
+    in-ssh-from-all:            # security group name
+      - flow: Inbound           # define outscale_security_group_rule lists (see terraform outscale_security_group_rule)
+        rules:                  # define rules list
+        - from_port_range: "22" # start port range
+          to_port_range: "22"   # end port range
+          ip_protocol: "tcp"
+          ip_ranges:
+            - 0.0.0.0/0
+            - *somehosts        # optional: use yaml anchor
+    in-ssh-from-bastion:
+      - flow: Inbound
+        rules:
+          - from_port_range: "22"
+            to_port_range: "22"
+            ip_protocol: "tcp"
+            ip_ranges:
+              - 172.16.0.10/32
+    in-all-from-all:
+      - flow: Inbound
+        rules:
+         - ip_protocol: "-1"
+           ip_ranges:
+              - 0.0.0.0/0
+    in-web-from-all:
+      - flow: Inbound
+        rules:
+        - from_port_range: "80"
+          to_port_range: "80"
+          ip_protocol: "tcp"
+          ip_ranges:
+            - 0.0.0.0/0
+        - from_port_range: "443"
+          to_port_range: "443"
+          ip_protocol: "tcp"
+          ip_ranges:
+            - 0.0.0.0/0
+  #
+  # loadbalancers
+  #
+  #load_balancers_: {}
+  load_balancers:
+    lb01:
+      load_balancer_type: internet-facing  # internal
+      public_ip: lb01
+      subnets:
+        - public-front-a
+      security_groups:
+        - in-web-from-all
+      listeners:
+        - load_balancer_port: 80
+          load_balancer_protocol: HTTP
+          backend_port: 80
+          backend_protocol: HTTP
+          # server_certificate_id: ORN
+      health_check:
+        - healthy_threshold: 10
+          check_interval: 40
+          path: "/"
+          port: 80
+          protocol: HTTP
+          timeout: 10
+          unhealthy_threshold: 7
+#      access_log:
+#        is_enabled: true # false
+#        publication_interval: 5
+#        osu_bucket_name: lb-logs
+#        osu_bucket_prefix: access-logs-lb01
+
+      #backend_vms: []
+      backend_vms:
+        - web
+  #
+  # instances
+  #   volumes list (root and multiple data volumes)
+  #   interfaces list with fixed or dynamic ip, and public ip
+  #
+  #instances: {} # empty instances map
+  #
+  instances:
+    bastion:
+      count: 1                      # default count = 1,   instance name will be : bastion-0
+      vm_type: t2.micro             # vm type
+      image_id: ami-0236ba54        # image debian
+      interfaces:                   # define interfaces list
+        - subnet: public-front-a    #  first interface will be bastion-0-0  : define subnet key name
+          private_ip: 172.16.0.10   # optional: define static private ip. Comment it to allocate dynamic ip
+          public_ip: bastion        # optional: reference key to public_ip key
+          security_groups:          # define security groups list
+            - in-ssh-from-all       # reference a list of security_groups key
+        - subnet: private-front-a   #  first interface will be bastion-0-1  : define subnet key name
+          private_ip: 172.16.1.10
+          security_groups:
+            - in-all-from-all
+    web:
+      count: 2                      # define servergroup of instances . if count >1 , dhcp only, no private_ip, no public_ip key
+                                    # instances name will be server-0, server-1, ....
+      vm_type: *server_type         # optional: use yaml anchor
+      image_id: *debian             # optional: use yaml anchor
+      tags:
+        # this tags to repulse instances on different hypervisor
+        osc.fcu.repulse_server_strict: web
+      enable_user_data: true
+      cloudinit_multipart:          # optional: define cloudinit multipart list
+        *cloudinit_web              #  use yaml anchor
+      interfaces:                   # interfaces list: server-0-0 will be first interface of first server, server-1-0, will be first interface of second server
+        - subnet: private-front-a
+          security_groups:
+            - in-ssh-from-bastion
+            - in-web-from-all
+      volumes:                      # optional: define dedicated volumes map
+        - name: root                # optional: define root volume
+          device_name: /dev/sda1    # root disk is /dev/sda1 see outscale_vm, or outscale_volume for details
+          size: 11
+  #      - name: data               # optional: define other data volumes
+  #        device_name: /dev/sdb
+  #        size: 15
+  #        #type:
+  #        #iops:
+  #        #state: detached         # to detached volume without deleting volume
+  #      - name: external               # optional: define external volumes created outside of this terraform
+  #        device_name: /dev/sdc
+  #        volume_id: vol-xxxxx         #  volume id

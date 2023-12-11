@@ -1,0 +1,509 @@
+#
+# sample config kube cluster
+# in region A
+#    1 lb for worker
+#    1 lb for ctlplane
+#    1 bastion
+#    1 servergroup ctrlplane instances in subnet master
+#    1 servergroup worker instances in subnet worker
+#
+default:
+  region: ${region_name}
+  prefix_name: ${prefix_name}
+  keypair_name: ${keypair_name}
+  remove_default_outbound_rule: true
+  images:
+    debian: &debian
+      #ami-0236ba54 # Debian 11
+      ami-d9937936 # Debian-12-2023.12.04-0
+  vm_types:
+    server_type: &server_type
+      tinav4.c2r4p1 # m3.medium
+  whitelist:
+    ssh_ip_whitelist: &ssh_ip_whitelist
+    # - 0.0.0.0/0
+    - ${IP_ALLOW}
+
+  cloud_init:
+    cloudinit_kube_master_first: &cloudinit_kube_master_first
+      - filename: 00-config-script-k3s-config.sh
+        content_type: text/x-shellscript
+        templatefile: cloud-init/config-script-k3s-config.sh.tftpl
+        vars:
+          K3S_CONF:
+            docker_version: docker-ce=5:24.0.7-1~debian.12~bookworm
+            K3S_VERSION: v1.28.5+k3s1
+            K3S_TOKEN: ${K3S_TOKEN}
+            K3S_CLUSTER_INIT: true
+            DOCKERHUB_LOGIN: ${DOCKERHUB_LOGIN}
+            DOCKERHUB_TOKEN: ${DOCKERHUB_TOKEN}
+            NODE_TAINTS: CriticalAddonsOnly
+            PORTAINER_ADMIN_PASSWORD: ${PORTAINER_ADMIN_PASSWORD}
+
+      - filename: 01-config-script-docker.sh
+        content_type: text/x-shellscript
+        file: cloud-init/config-script-docker.sh
+
+      - filename: 02-config-script-k3s-master.sh
+        content_type: text/x-shellscript
+        file: cloud-init/config-script-k3s-master.sh
+
+    cloudinit_kube_master_add: &cloudinit_kube_master_add
+      - filename: 00-config-script-k3s-config.sh
+        content_type: text/x-shellscript
+        templatefile: cloud-init/config-script-k3s-config.sh.tftpl
+        vars:
+          K3S_CONF:
+            docker_version: docker-ce=5:24.0.7-1~debian.12~bookworm
+            K3S_VERSION: v1.28.5+k3s1
+            K3S_TOKEN: ${K3S_TOKEN}
+            DOCKERHUB_LOGIN: ${DOCKERHUB_LOGIN}
+            DOCKERHUB_TOKEN: ${DOCKERHUB_TOKEN}
+            NODE_TAINTS: CriticalAddonsOnly
+            K3S_SERVER_IP_LIST:
+              - 172.16.1.10
+
+      - filename: 01-config-script-docker.sh
+        content_type: text/x-shellscript
+        file: cloud-init/config-script-docker.sh
+
+      - filename: 02-config-script-k3s-master.sh
+        content_type: text/x-shellscript
+        file: cloud-init/config-script-k3s-master.sh
+
+  cloud_init:
+    cloudinit_kube_agent: &cloudinit_kube_agent
+      - filename: 00-config-script-k3s-config.sh
+        content_type: text/x-shellscript
+        templatefile: cloud-init/config-script-k3s-config.sh.tftpl
+        vars:
+          K3S_CONF:
+            docker_version: docker-ce=5:24.0.7-1~debian.12~bookworm
+            K3S_VERSION: v1.28.5+k3s1
+            K3S_TOKEN: ${K3S_TOKEN}
+            DOCKERHUB_LOGIN: ${DOCKERHUB_LOGIN}
+            DOCKERHUB_TOKEN: ${DOCKERHUB_TOKEN}
+            K3S_SERVER_IP_LIST:
+              - 172.16.1.10
+            #NODE_LABELS: "svccontroller.k3s.cattle.io/enablelb=true svccontroller.k3s.cattle.io/lbpool=pool1"
+
+      - filename: 01-config-script-docker.sh
+        content_type: text/x-shellscript
+        file: cloud-init/config-script-docker.sh
+
+      - filename: 02-config-script-k3s-agent.sh
+        content_type: text/x-shellscript
+        file: cloud-init/config-script-k3s-agent.sh
+
+resources:
+  #
+  # public_ip
+  #
+  public_ip:
+    nat01: {}
+    lb-web01: {}
+    lb-admin01: {}
+    bastion: {}
+  #
+  # net
+  #
+  net:
+    name: net01
+    ip_range: 172.16.0.0/16
+    tags:
+      # This tag is needed to enable security group on vm in same subnet
+      osc.fcu.enable_lan_security_groups: true
+  #
+  # internet_service
+  #
+  internet_service:
+    internet01:
+  #
+  # subnets
+  #   route and route_table
+  #   nat_service
+  #
+  subnets:
+    public-master-a:
+      ip_range: 172.16.0.0/24
+      subregion_name: a
+      nat_service: nat01
+      route:
+        - destination_ip_range: 0.0.0.0/0
+          gateway_id: internet01
+    private-master-a:
+      ip_range: 172.16.1.0/24
+      subregion_name: a
+      route:
+        - destination_ip_range: 0.0.0.0/0
+          nat_service_id: nat01
+    private-worker-app-a:
+      ip_range: 172.16.2.0/24
+      subregion_name: a
+      route:
+        - destination_ip_range: 0.0.0.0/0
+          nat_service_id: nat01
+
+  security_groups:
+    out-restricted-to-all:
+      - flow: Outbound
+        rules:
+          - from_port_range: 53
+            to_port_range: 53
+            ip_protocol: tcp
+            ip_ranges:
+              - 0.0.0.0/0
+          - from_port_range: 53
+            to_port_range: 53
+            ip_protocol: udp
+            ip_ranges:
+              - 0.0.0.0/0
+          - from_port_range: 123
+            to_port_range: 123
+            ip_protocol: udp
+            ip_ranges:
+              - 0.0.0.0/0
+          - from_port_range: 80
+            to_port_range: 80
+            ip_protocol: tcp
+            ip_ranges:
+              - 0.0.0.0/0
+          - from_port_range: 443
+            to_port_range: 443
+            ip_protocol: tcp
+            ip_ranges:
+              - 0.0.0.0/0
+    in-ssh-to-bastion:
+      - flow: Inbound
+        rules:
+          - from_port_range: "22"
+            to_port_range: "22"
+            ip_protocol: tcp
+            ip_ranges:
+              *ssh_ip_whitelist
+    in-ssh-from-bastion:
+      - flow: Inbound
+        rules:
+          - from_port_range: "22"
+            to_port_range: "22"
+            ip_protocol: tcp
+            # ip_ranges:
+            #  - 172.16.0.100/32
+            vm_ranges:
+              - bastion
+    out-ssh-to-net:
+      - flow: Outbound
+        rules:
+          - from_port_range: "22"
+            to_port_range: "22"
+            ip_protocol: tcp
+            subnet_ranges:
+              - public-master-a
+              - private-master-a
+              - private-worker-app-a
+    in-web-from-all:
+      - flow: Inbound
+        rules:
+          - from_port_range: "443"
+            to_port_range: "443"
+            ip_protocol: tcp
+            ip_ranges:
+              - 0.0.0.0/0
+      - flow: Inbound
+        rules:
+          - from_port_range: "80"
+            to_port_range: "80"
+            ip_protocol: tcp
+            ip_ranges:
+              - 0.0.0.0/0
+
+    # Inbound Rules for K3s Server Nodes: https://docs.k3s.io/installation/requirements#inbound-rules-for-k3s-server-nodes
+    in-k3s-from-server:
+      - flow: Inbound
+        rules:
+          - from_port_range: "2379"
+            to_port_range: "2380"
+            ip_protocol: tcp
+  #          vm_ranges:
+  #            - master-a
+  #            - master-add-a
+            subnet_ranges:
+              - private-master-a
+          - from_port_range: "6443"
+            to_port_range: "6443"
+            ip_protocol: tcp
+  #          vm_ranges:
+  #            - worker-a
+  #            - master-a
+  #            - master-add-a
+            subnet_ranges:
+              - private-master-a
+              - private-worker-app-a
+          - from_port_range: "8472"
+            to_port_range: "8472"
+            ip_protocol: udp
+  #          vm_ranges:
+  #            - worker-a
+  #            - master-a
+  #            - master-add-a
+            subnet_ranges:
+              - private-master-a
+              - private-worker-app-a
+          - from_port_range: "10250"
+            to_port_range: "10250"
+            ip_protocol: tcp
+  #          vm_ranges:
+  #            - worker-a
+  #            - master-a
+  #            - master-add-a
+            subnet_ranges:
+              - private-master-a
+              - private-worker-app-a
+
+    out-k3s-to-server:
+      - flow: Outbound
+        rules:
+        - from_port_range: "2379"
+          to_port_range: "2380"
+          ip_protocol: tcp
+#          vm_ranges:
+#            - master-a
+#            - master-add-a
+          subnet_ranges:
+            - private-master-a
+        - from_port_range: "6443"
+          to_port_range: "6443"
+          ip_protocol: tcp
+#          vm_ranges:
+#            - master-a
+#            - master-add-a
+#            - worker-a
+          subnet_ranges:
+            - private-master-a
+            - private-worker-app-a
+        - from_port_range: "8472"
+          to_port_range: "8472"
+          ip_protocol: udp
+#          vm_ranges:
+#            - master-a
+#            - master-add-a
+#            - worker-a
+          subnet_ranges:
+            - private-master-a
+            - private-worker-app-a
+        - from_port_range: "10250"
+          to_port_range: "10250"
+          ip_protocol: tcp
+#          vm_ranges:
+#            - master-a
+#            - master-add-a
+#            - worker-a
+          subnet_ranges:
+            - private-master-a
+            - private-worker-app-a
+    in-k3s-from-worker:
+      - flow: Inbound
+        rules:
+        - from_port_range: "8472"
+          to_port_range: "8472"
+          ip_protocol: udp
+#          vm_ranges:
+#            - master-a
+#            - master-add-a
+#            - worker-a
+          subnet_ranges:
+            - private-master-a
+            - private-worker-app-a
+        - from_port_range: "10250"
+          to_port_range: "10250"
+          ip_protocol: tcp
+#          vm_ranges:
+#            - master-a
+#            - master-add-a
+#            - worker-a
+          subnet_ranges:
+            - private-master-a
+            - private-worker-app-a
+
+    out-k3s-to-worker:
+      - flow: Outbound
+        rules:
+        - from_port_range: "6443"
+          to_port_range: "6443"
+          ip_protocol: tcp
+#          vm_ranges:
+#            - master-a
+#            - master-add-a
+          subnet_ranges:
+            - private-master-a
+
+        - from_port_range: "8472"
+          to_port_range: "8472"
+          ip_protocol: udp
+#          vm_ranges:
+#            - master-a
+#            - master-add-a
+#            - worker-a
+          subnet_ranges:
+            - private-master-a
+            - private-worker-app-a
+
+        - from_port_range: "10250"
+          to_port_range: "10250"
+          ip_protocol: tcp
+#          vm_ranges:
+#            - master-a
+#            - master-add-a
+#            - worker-a
+          subnet_ranges:
+            - private-master-a
+            - private-worker-app-a
+
+#  load_balancers: {}
+  load_balancers:
+    lb-web01:
+      load_balancer_type: internet-facing  # internal
+      public_ip: lb-web01
+      subnets:
+        - public-master-a
+      security_groups:
+        - out-restricted-to-all
+        - in-web-from-all
+      listeners:
+        - load_balancer_port: 80
+          load_balancer_protocol: HTTP
+          backend_port: 80
+          backend_protocol: HTTP
+          # server_certificate_id: ORN
+#      access_log:
+#        is_enabled: false # true # false
+#        publication_interval: 5
+#        osu_bucket_name: lb-logs
+#        osu_bucket_prefix: access-logs-lb01
+      health_check:
+        - path: "/"
+          port: 80
+          protocol: HTTP
+          check_interval: 30
+          healthy_threshold: 10
+          timeout: 20
+          unhealthy_threshold: 8
+
+      backend_vms:
+        - worker-app-a
+
+    lb-admin01:
+      load_balancer_type: internet-facing  # internal
+      public_ip: lb-admin01
+      subnets:
+        - public-master-a
+      security_groups:
+        - out-restricted-to-all
+        - in-web-from-all
+      listeners:
+        - load_balancer_port: 443
+          load_balancer_protocol: TCP
+          backend_port: 443
+          backend_protocol: TCP
+          # server_certificate_id: ORN
+##      access_log:
+##        is_enabled: false # true # false
+##        publication_interval: 5
+##        osu_bucket_name: lb-logs
+##        osu_bucket_prefix: access-logs-lb01
+      health_check:
+        - port: 443
+          protocol: TCP
+          check_interval: 30
+          healthy_threshold: 10
+          timeout: 20
+          unhealthy_threshold: 8
+
+      backend_vms:
+        - master-a
+        - master-add-a
+
+  #
+  # instances
+  #   volumes list (root and multiple data volumes)
+  #   interfaces list with fixed or dynamic ip
+  #
+  instances:
+    bastion:
+      count: ${bastion_count}
+      vm_type: *server_type
+      image_id: *debian
+      interfaces:
+        - subnet: public-master-a
+          private_ip: 172.16.0.100
+          public_ip: bastion
+          security_groups:
+            - out-restricted-to-all
+            - in-ssh-to-bastion
+            - out-ssh-to-net
+    # first control plane (cluster-init)
+    master-a:
+      count: ${k3s_masters_init_count}
+      vm_type: *server_type
+      image_id: *debian
+      tags:
+        # tags to repulse instances on different hypervisor, on same cluster
+        osc.fcu.repulse_server_strict: master-a
+        osc.fcu.attract_cluster: ${prefix_name}
+      interfaces:
+        - subnet: private-master-a
+          private_ip: 172.16.1.10
+          security_groups:
+            - out-restricted-to-all
+            - in-ssh-from-bastion
+            - in-web-from-all
+            - in-k3s-from-server
+            - out-k3s-to-server
+      enable_user_data: true
+      cloudinit_multipart:
+        *cloudinit_kube_master_first
+
+    # added control plane
+    master-add-a:
+      count: ${k3s_masters_add_count}
+      vm_type: *server_type
+      image_id: *debian
+      tags:
+        # tags to repulse instances on different hypervisor, on same cluster
+        osc.fcu.repulse_server_strict: master-a
+        osc.fcu.attract_cluster: ${prefix_name}
+        k3s.label.master: true
+      interfaces:
+        - subnet: private-master-a
+          security_groups:
+            - out-restricted-to-all
+            - in-ssh-from-bastion
+            - in-web-from-all
+            - in-k3s-from-server
+            - out-k3s-to-server
+      enable_user_data: true
+      cloudinit_multipart:
+        *cloudinit_kube_master_add
+
+    # added workers
+    worker-app-a:
+      count: ${k3s_workers_count}
+      vm_type: *server_type
+      image_id: *debian
+      tags:
+        # tags to repulse instances on different hypervisor, on same cluster
+        osc.fcu.repulse_server_strict: worker-app-a
+        osc.fcu.attract_cluster: ${prefix_name}
+        k3s.label.web: true     # group
+        k3s.label.ingress: true # type
+      interfaces:
+        - subnet: private-worker-app-a
+          security_groups:
+            - out-restricted-to-all
+            - in-ssh-from-bastion
+            - in-web-from-all
+            - in-k3s-from-worker
+            - out-k3s-to-worker
+      enable_user_data: true
+      cloudinit_multipart:
+        *cloudinit_kube_agent
