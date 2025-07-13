@@ -99,7 +99,7 @@ resource "outscale_volume" "volume" {
   }
 }
 
-resource "outscale_volumes_link" "volumes_link" {
+resource "outscale_volume_link" "volumes_link" {
   for_each = { for k, v in local.volume_list : k => v if v.name != "root" && v.state != "detached" }
 
   device_name = each.value.device_name
@@ -125,7 +125,7 @@ resource "outscale_vm" "vm" {
 
   # placement_subregion_name = var.subregion_name
 
-  is_source_dest_checked = contains(keys(var.value), "is_source_dest_checked") ? var.value.is_source_dest_checked : true
+  is_source_dest_checked = contains(keys(var.value), "is_source_dest_checked") ? tobool(var.value.is_source_dest_checked) : true
 
   # link nics
   dynamic "nics" {
@@ -172,7 +172,7 @@ resource "outscale_vm" "vm" {
     }
   }
 
-  depends_on = [outscale_nic.nic]
+  # depends_on = [outscale_nic.nic]
   # don't force-recreate instance if only user data changes
   lifecycle {
     ignore_changes = [user_data]
