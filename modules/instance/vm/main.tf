@@ -121,7 +121,7 @@ resource "outscale_vm" "vm" {
   keypair_name = var.config.default.keypair_name
   state        = local.state
 
-  user_data = local.enable_user_data ? local.user_data : null
+  user_data = sensitive(local.enable_user_data ? local.user_data : null)
 
   # placement_subregion_name = var.subregion_name
 
@@ -221,5 +221,6 @@ output "vm_id" {
 
 output "user_data" {
   value = local.user_data
+  sensitive = true
 }
 
