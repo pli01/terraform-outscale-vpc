@@ -3,7 +3,13 @@
 #
 resource "outscale_load_balancer" "lb" {
   for_each           = local.resources.load_balancers
-  load_balancer_name = format("%s-%s", local.default.prefix_name, each.key)
+
+  load_balancer_name = (
+    lookup(each.value, "use_hashed_name", false)
+    ? substr(sha1(format("%s-%s", local.default.prefix_name, each.key)), 0, 32)
+    : format("%s-%s", local.default.prefix_name, each.key)
+  )
+
   load_balancer_type = each.value.load_balancer_type
 
   dynamic "listeners" {

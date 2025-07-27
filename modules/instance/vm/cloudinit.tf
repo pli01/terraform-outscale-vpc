@@ -63,7 +63,7 @@ data "cloudinit_config" "vm_config" {
     content {
       filename     = part.value.filename
       content_type = part.value.content_type
-      content      = part.value.content
+      content      = sensitive(part.value.content)
     }
   }
 }
