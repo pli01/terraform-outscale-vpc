@@ -2,6 +2,12 @@
 
 This repository enable you to create a VPC and a set of resources in the Outscale Cloud from terraform files and a description and configuration yaml file
 
+Breaking Changes!:
+This module use v1.x version of outscale terraform provider
+You must migrate your state following this guide
+
+https://github.com/outscale/terraform-provider-outscale/blob/master/MIGRATION.md
+
 ## What does it do?
 
 You describe the topology in one Yaml configuration file (`config.yml`), then execute terraform, and the following resources are created:
@@ -236,6 +242,7 @@ default:
   load_balancers:
     lb01:
       load_balancer_type: internet-facing  # use 'internal' for internal LB
+      use_hashed_name: true  # generate a sha1 name of lb to stay within the Outscale limit of 32 characters
       public_ip: lb01
       subnets:
         - public-front-a
