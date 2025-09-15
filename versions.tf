@@ -2,7 +2,7 @@ terraform {
   required_providers {
     outscale = {
       source  = "outscale/outscale"
-      version = "0.10.0"
+      version = "1.2.1"
     }
     cloudinit = {
       source  = "hashicorp/cloudinit"
